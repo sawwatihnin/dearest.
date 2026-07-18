@@ -155,13 +155,7 @@ function FilterSelect({
 
 export function AttributionPanel({ post }: { post: PostSummary }) {
   if (!post.attribution) {
-    return (
-      <div className="story-source-panel glass-panel">
-        <p className="section-kicker">Source</p>
-        <h3>From the Dearest community</h3>
-        <p>This letter arrived anonymously and carries no public attribution.</p>
-      </div>
-    );
+    return null;
   }
 
   return (
