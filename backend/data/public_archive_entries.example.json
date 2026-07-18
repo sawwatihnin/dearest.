@@ -1,0 +1,15 @@
+[
+  {
+    "ingestion_key": "author-work-year-fragment-001",
+    "title": "Entry title used in Dearest",
+    "text": "Verified public-domain text or excerpt goes here.",
+    "mood": "longing",
+    "author": "Author Name",
+    "work": "Work or collection title",
+    "year": "c. 1862",
+    "source": "Project Gutenberg / Library / Archive source name",
+    "source_url": "https://example.org/source-page",
+    "rights_status": "Public domain in the United States",
+    "rights_notes": "Why this entry is legally permitted for ingestion."
+  }
+]
