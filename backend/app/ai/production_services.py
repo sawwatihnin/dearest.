@@ -5,10 +5,11 @@ from __future__ import annotations
 from dataclasses import asdict
 from hashlib import sha256
 import math
+import re
 from time import perf_counter
 
 from .emotion import EmotionAnalyzer
-from .vector_store import LocalVectorStorage, VectorQuery, VectorStorageInterface
+from .vector_store import QdrantLocalVectorStorage, VectorQuery, VectorStorageInterface
 from .explainability import ExplainabilityService
 from .moderation import ModerationService
 from .narrative import NarrativeAnalyzer
@@ -25,6 +26,7 @@ from .types import (
     ThemeAnalysis,
 )
 from .embeddings import EmbeddingService
+from ..settings import get_settings
 
 PROCESSING_VERSION = "2026.07.async-dual-stage-v1"
 
@@ -137,7 +139,10 @@ class RetrievalService:
         vector_storage: VectorStorageInterface | None = None,
     ) -> None:
         self._embedding_service = embedding_service
-        self._vector_storage = vector_storage or LocalVectorStorage(embedding_service)
+        self._vector_storage = vector_storage or QdrantLocalVectorStorage(
+            embedding_service,
+            get_settings().qdrant_path,
+        )
 
     def retrieve(
         self,
@@ -173,17 +178,17 @@ class RetrievalService:
             candidate_themes = set(self._deserialize_profile_keys(candidate.get("semantic_profile_json")))
             emotion_score = self._jaccard(source_emotions, candidate_emotions)
             theme_score = self._jaccard(source_themes, candidate_themes)
-            narrative_score = self._opening_overlap(
+            narrative_score = self._narrative_overlap(
                 str(source_post.get("summary") or source_post.get("raw_text") or ""),
                 str(candidate.get("summary") or candidate.get("raw_text") or ""),
             )
             temporal_score = self._temporal_similarity(source_year, self._timeline_year(candidate))
             quality_score = self._quality_score(candidate)
             hybrid_score = round(
-                dense_score * 0.6
+                dense_score * 0.52
                 + emotion_score * 0.12
-                + theme_score * 0.14
-                + narrative_score * 0.08
+                + theme_score * 0.16
+                + narrative_score * 0.14
                 + temporal_score * 0.03
                 + quality_score * 0.03,
                 3,
@@ -214,6 +219,9 @@ class RetrievalService:
         for candidate in candidates:
             candidate.metadata.latency_ms = per_candidate
         return candidates
+
+    def sync_candidates(self, candidate_posts: list[dict[str, object]]) -> int:
+        return self._vector_storage.upsert_posts(candidate_posts)
 
     def _deserialize_list(self, payload: object) -> list[str]:
         if not payload:
@@ -247,6 +255,13 @@ class RetrievalService:
         right_tokens = {token.lower() for token in right.split()[:12]}
         return self._jaccard(left_tokens, right_tokens)
 
+    def _narrative_overlap(self, left: str, right: str) -> float:
+        opening = self._opening_overlap(left, right)
+        left_keywords = set(self._meaningful_tokens(left))
+        right_keywords = set(self._meaningful_tokens(right))
+        lexical = self._jaccard(left_keywords, right_keywords)
+        return max(opening, lexical)
+
     def _temporal_similarity(self, left_year: int | None, right_year: int | None) -> float:
         if left_year is None or right_year is None:
             return 0.0
@@ -256,6 +271,54 @@ class RetrievalService:
         summary = str(candidate.get("summary") or "")
         keywords = self._deserialize_list(candidate.get("keywords_json"))
         return min(1.0, (len(summary.split()) / 24 + len(keywords) / 5) / 2)
+
+    def _meaningful_tokens(self, text: str) -> list[str]:
+        stopwords = {
+            "about",
+            "after",
+            "again",
+            "against",
+            "because",
+            "before",
+            "being",
+            "could",
+            "every",
+            "still",
+            "there",
+            "their",
+            "these",
+            "those",
+            "through",
+            "which",
+            "would",
+            "while",
+            "where",
+            "when",
+            "with",
+            "from",
+            "into",
+            "your",
+            "ours",
+            "they",
+            "them",
+            "than",
+            "that",
+            "have",
+            "what",
+            "know",
+            "like",
+            "just",
+            "were",
+            "been",
+            "will",
+            "said",
+            "says",
+            "once",
+            "here",
+            "only",
+        }
+        tokens = [token for token in re.findall(r"[a-zA-Z']+", text.lower()) if len(token) > 3]
+        return [token for token in tokens if token not in stopwords][:18]
 
 
 class RankingService:
@@ -282,9 +345,13 @@ class RankingService:
                 continue
             candidate_themes = set(self._deserialize_profile_keys(post.get("semantic_profile_json")))
             candidate_emotions = set(self._deserialize_list(post.get("detected_emotions_json")))
-            diversity_penalty = self._mmr_penalty(candidate_themes, candidate_emotions, chosen_vectors)
-            diversity_penalty += 0.05 if candidate.content_type in seen_types else 0.0
-            final_score = round(max(calibrated_score - diversity_penalty, 0.0), 3)
+            diversity_penalty = 0.0
+            if len(selected) >= 2:
+                diversity_penalty = self._mmr_penalty(candidate_themes, candidate_emotions, chosen_vectors)
+            if top_k <= 5 and candidate.content_type in seen_types:
+                diversity_penalty += 0.01
+            blended_score = calibrated_score * 0.78 + candidate.score * 0.22
+            final_score = round(max(blended_score - diversity_penalty, 0.0), 3)
             excerpt = self._supporting_excerpt(str(post.get("raw_text") or ""))
             ranked = RankedRecommendation(
                 post_id=candidate.post_id,
@@ -352,7 +419,7 @@ class RankingService:
             theme_overlap = self._jaccard(candidate_themes, chosen_themes)
             emotion_overlap = self._jaccard(candidate_emotions, chosen_emotions)
             max_overlap = max(max_overlap, theme_overlap * 0.65 + emotion_overlap * 0.35)
-        return round(max_overlap * 0.18, 3)
+        return round(max_overlap * 0.06, 3)
 
     def _confidence_label(self, score: float) -> str:
         if score >= 0.8:
@@ -485,6 +552,7 @@ class RecommendationServiceV2:
         avoid_content_note: str | None = None,
     ) -> RecommendationBundle:
         started = perf_counter()
+        self._retrieval_service.sync_candidates(candidate_posts)
         candidates = self._retrieval_service.retrieve(
             source_post=source_post,
             candidate_posts=candidate_posts,

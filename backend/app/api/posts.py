@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from starlette.responses import PlainTextResponse
 
 from ..ai import UnsafeContentError
+from ..admin import reindex_embeddings, replay_dead_letter_entry
 from ..schemas import (
     ArchiveExplorerResponse,
     EchoesResponse,
@@ -16,7 +18,9 @@ from ..schemas import (
 )
 from .deps import get_post_service, get_processing_service
 from ..services import PostService, ProcessingService
+from ..settings import get_settings
 from ..tasks import process_post_job
+from ..telemetry import registry
 
 router = APIRouter(prefix="/api")
 
@@ -25,6 +29,11 @@ router = APIRouter(prefix="/api")
 def health_check() -> dict[str, str]:
     """Health check endpoint."""
     return {"status": "ok"}
+
+
+@router.get("/metrics", response_class=PlainTextResponse)
+def metrics() -> str:
+    return registry.render_prometheus()
 
 
 @router.get("/posts", response_model=list[PostSummary])
@@ -128,3 +137,26 @@ def archive_explorer(
         sort=sort,
         semantic_to_post_id=semantic_to_post_id,
     )
+
+
+@router.post("/admin/reindex-embeddings")
+def admin_reindex_embeddings(
+    delta_only: bool = True,
+    x_admin_token: str | None = Header(default=None),
+) -> dict[str, int]:
+    _require_admin_token(x_admin_token)
+    return reindex_embeddings(delta_only=delta_only)
+
+
+@router.post("/admin/dead-letter/{entry_id}/replay")
+def admin_replay_dead_letter(
+    entry_id: int,
+    x_admin_token: str | None = Header(default=None),
+) -> dict[str, object]:
+    _require_admin_token(x_admin_token)
+    return replay_dead_letter_entry(entry_id)
+
+
+def _require_admin_token(token: str | None) -> None:
+    if token != get_settings().admin_token:
+        raise HTTPException(status_code=403, detail="Admin token required")

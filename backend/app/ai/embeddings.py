@@ -7,10 +7,12 @@ import math
 import re
 from collections import Counter
 from functools import lru_cache
+from hashlib import sha256
 
 import numpy as np
 
 from .types import EmbeddingResult
+from ..telemetry import registry
 
 STOPWORDS = {
     "a",
@@ -72,16 +74,20 @@ STOPWORDS = {
     "credit_card",
     "ssn",
 }
+TFIDF_VECTOR_DIMENSION = 256
 
 
 class EmbeddingService:
     """Generates embeddings and cosine similarity scores."""
 
-    def generate_embedding(self, text: str) -> EmbeddingResult:
+    def generate_embedding(self, text: str, preferred_model: str | None = None) -> EmbeddingResult:
         """Generate a semantic embedding or fall back to TF-IDF mode metadata."""
-        model = self._load_sentence_model()
+        if preferred_model == "tfidf":
+            return EmbeddingResult(embedding_model="tfidf", vector=self._build_hashed_tfidf_vector(text))
+
+        model = self._load_sentence_model() if preferred_model != "sentence-transformers" else self._load_sentence_model()
         if model is None:
-            return EmbeddingResult(embedding_model="tfidf", vector=None)
+            return EmbeddingResult(embedding_model="tfidf", vector=self._build_hashed_tfidf_vector(text))
 
         vector = model.encode([text])[0]
         return EmbeddingResult(
@@ -113,12 +119,9 @@ class EmbeddingService:
         if source_index is None:
             return []
 
-        use_sentence_vectors = all(
-            post["embedding_model"] == "sentence-transformers" and post["embedding_json"] is not None
-            for post in posts
-        )
+        use_stored_vectors = all(post.get("embedding_json") is not None for post in posts)
 
-        if use_sentence_vectors:
+        if use_stored_vectors:
             matrix = np.array([json.loads(str(post["embedding_json"])) for post in posts], dtype=float)
             scores = self._cosine_similarity_vector(matrix[source_index], matrix)
         else:
@@ -179,6 +182,7 @@ class EmbeddingService:
 
             return SentenceTransformer("all-MiniLM-L6-v2")
         except Exception:
+            registry.increment("dearest_embedding_fallback_total")
             return None
 
     def _cosine_similarity_vector(self, source: np.ndarray, matrix: np.ndarray) -> np.ndarray:
@@ -222,3 +226,25 @@ class EmbeddingService:
 
     def _tokenize(self, text: str) -> list[str]:
         return re.findall(r"[a-zA-Z']+", text.lower())
+
+    def _build_hashed_tfidf_vector(self, text: str, dimension: int = TFIDF_VECTOR_DIMENSION) -> list[float]:
+        words = [word for word in self._tokenize(text) if word not in STOPWORDS and len(word) > 2]
+        bigrams = [f"{words[index]}_{words[index + 1]}" for index in range(len(words) - 1)]
+        tokens = words + bigrams
+        if not tokens:
+            return [0.0] * dimension
+
+        counts = Counter(tokens)
+        vector = np.zeros(dimension, dtype=float)
+        total = sum(counts.values())
+        for token, count in counts.items():
+            digest = sha256(token.encode("utf-8")).digest()
+            bucket = int.from_bytes(digest[:4], "big") % dimension
+            sign = 1.0 if digest[4] % 2 == 0 else -1.0
+            tf = count / max(total, 1)
+            vector[bucket] += sign * tf
+
+        norm = np.linalg.norm(vector)
+        if norm == 0:
+            return vector.tolist()
+        return (vector / norm).astype(float).tolist()

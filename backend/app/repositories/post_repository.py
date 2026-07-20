@@ -65,6 +65,8 @@ class PostRepository:
         processing_trace_json: str,
         embedding_json: str | None,
         embedding_model: str,
+        embedding_versions_json: str = "[]",
+        pipeline_versions_json: str = "[]",
     ) -> Post:
         """Persist a new post."""
         post = Post(
@@ -97,6 +99,8 @@ class PostRepository:
             processing_trace_json=processing_trace_json,
             embedding_json=embedding_json,
             embedding_model=embedding_model,
+            embedding_versions_json=embedding_versions_json,
+            pipeline_versions_json=pipeline_versions_json,
         )
         self._session.add(post)
         self._session.commit()
@@ -136,6 +140,8 @@ class PostRepository:
         processing_trace_json: str,
         embedding_json: str | None,
         embedding_model: str,
+        embedding_versions_json: str = "[]",
+        pipeline_versions_json: str = "[]",
     ) -> Post:
         """Update an existing persisted post."""
         post.content_hash = content_hash
@@ -167,6 +173,8 @@ class PostRepository:
         post.processing_trace_json = processing_trace_json
         post.embedding_json = embedding_json
         post.embedding_model = embedding_model
+        post.embedding_versions_json = embedding_versions_json
+        post.pipeline_versions_json = pipeline_versions_json
         self._session.add(post)
         self._session.commit()
         self._session.refresh(post)

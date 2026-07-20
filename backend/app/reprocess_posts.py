@@ -20,13 +20,12 @@ from .ai import (
     StoryProcessingPipeline,
     ThemeExtractor,
 )
-from .database import SessionLocal, ensure_schema
+from .database import SessionLocal
 from .repositories import PostRepository
 from .services.post_service import PostService
 
 
 def main() -> None:
-    ensure_schema()
     with SessionLocal() as session:
         repository = PostRepository(session)
         embedding_service = EmbeddingService()

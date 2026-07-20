@@ -45,6 +45,8 @@ class Post(Base):
     processing_trace_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     embedding_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     embedding_model: Mapped[str] = mapped_column(String(64), nullable=False, default="tfidf")
+    embedding_versions_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    pipeline_versions_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, server_default=func.now()
     )

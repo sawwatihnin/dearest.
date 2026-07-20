@@ -11,9 +11,21 @@ import spacy
 from spacy.language import Language
 
 from .types import RedactionItem, RedactionResult
+from ..telemetry import registry
 
 SPACY_MODEL_CANDIDATES = ("en_core_web_lg", "en_core_web_md", "en_core_web_sm")
 SPACY_ENTITY_TYPES = {"PERSON", "ORG", "GPE", "LOC", "FAC"}
+REGEX_PRIORITY_TYPES = {
+    "EMAIL",
+    "PHONE",
+    "URL",
+    "INSTAGRAM_HANDLE",
+    "TWITTER_HANDLE",
+    "DISCORD_USERNAME",
+    "ADDRESS",
+    "CREDIT_CARD",
+    "SSN",
+}
 PLACEHOLDER_BY_TYPE = {
     "PERSON": "[PERSON]",
     "ORG": "[ORGANIZATION]",
@@ -45,12 +57,27 @@ TWITTER_PATTERN = re.compile(
 DISCORD_PATTERN = re.compile(r"(?<!\w)[A-Za-z0-9._]{2,32}#[0-9]{4}(?!\w)")
 ADDRESS_PATTERN = re.compile(
     r"\b\d{1,6}\s+(?:[A-Za-z0-9.'-]+\s){0,5}"
-    r"(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct|Way|Place|Pl|Terrace|Ter|Circle|Cir)\b"
-    r"(?:,?\s+[A-Za-z.\- ]+)?",
+    r"(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct|Way|Place|Pl|Terrace|Ter|Circle|Cir)\b",
     re.IGNORECASE,
 )
 SSN_PATTERN = re.compile(r"(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)")
 CREDIT_CARD_PATTERN = re.compile(r"(?<!\d)(?:\d[ -]?){13,19}(?!\d)")
+KNOWN_ORG_TERMS = (
+    "UNC Chapel Hill",
+    "Google",
+    "Apple",
+    "NASA",
+    "Microsoft",
+    "Spotify",
+)
+KNOWN_LOCATION_TERMS = (
+    "Chapel Hill",
+    "Paris",
+    "Brooklyn",
+    "Los Angeles",
+    "Raleigh",
+    "New York City",
+)
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +163,8 @@ class RedactionService:
         matches.extend(self._find_pattern_matches(text, ADDRESS_PATTERN, "ADDRESS"))
         matches.extend(self._find_valid_credit_cards(text))
         matches.extend(self._find_pattern_matches(text, SSN_PATTERN, "SSN"))
+        matches.extend(self._find_literal_matches(text, KNOWN_ORG_TERMS, "ORG"))
+        matches.extend(self._find_literal_matches(text, KNOWN_LOCATION_TERMS, "GPE"))
         return matches
 
     def _apply_redactions(self, text: str, matches: list[_SpanMatch]) -> str:
@@ -202,11 +231,35 @@ class RedactionService:
                 )
         return matches
 
+    def _find_literal_matches(self, text: str, literals: tuple[str, ...], pii_type: str) -> list[_SpanMatch]:
+        lowered = text.lower()
+        matches: list[_SpanMatch] = []
+        for literal in literals:
+            start = lowered.find(literal.lower())
+            if start == -1:
+                continue
+            matches.append(
+                _SpanMatch(
+                    start=start,
+                    end=start + len(literal),
+                    pii_type=pii_type,
+                    value=text[start : start + len(literal)],
+                )
+            )
+        return matches
+
     def _coalesce_matches(self, matches: list[_SpanMatch]) -> list[_SpanMatch]:
         if not matches:
             return []
 
-        ordered = sorted(matches, key=lambda match: (match.start, -(match.end - match.start)))
+        ordered = sorted(
+            matches,
+            key=lambda match: (
+                match.start,
+                -self._priority(match.pii_type),
+                -(match.end - match.start),
+            ),
+        )
         resolved: list[_SpanMatch] = []
         seen: set[tuple[int, int, str, str]] = set()
         cursor = -1
@@ -220,6 +273,13 @@ class RedactionService:
             resolved.append(match)
             cursor = match.end
         return resolved
+
+    def _priority(self, pii_type: str) -> int:
+        if pii_type in REGEX_PRIORITY_TYPES:
+            return 3
+        if pii_type in {"ORG", "PERSON", "GPE", "LOC", "FAC"}:
+            return 2
+        return 1
 
     def _merge_adjacent_person_entities(
         self, text: str, matches: list[_SpanMatch]
@@ -302,8 +362,10 @@ class RedactionService:
                 logger.info("Dearest redaction model loaded: %s", self._model_name(model))
                 return model
             except OSError:
+                registry.increment("dearest_spacy_load_errors_total")
                 continue
         fallback = spacy.blank("en")
+        registry.increment("dearest_redaction_fallback_total")
         logger.warning("Dearest redaction model fallback loaded: %s", self._model_name(fallback))
         return fallback
 

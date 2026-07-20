@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent } from "react";
+import { type ChangeEvent } from "react";
 import { Link } from "react-router-dom";
 
 import type {
@@ -209,39 +209,6 @@ export function ContentNotePanel({ post }: { post: PostSummary }) {
   );
 }
 
-export function ArchiveIntelligencePanel({ post }: { post: PostSummary }) {
-  const visibleStages = post.processing.stages.slice(0, 6);
-
-  return (
-    <section className="glass-panel archive-intelligence-panel">
-      <div className="section-heading">
-        <p className="section-kicker">Archive intelligence</p>
-        <h2>The quiet machinery behind this letter.</h2>
-      </div>
-      <p className="archive-intelligence-copy">
-        Processed through moderation, privacy protection, narrative analysis, and semantic matching before it reached the shelf.
-      </p>
-      <div className="archive-intelligence-meta">
-        <span className="chip">Pipeline {post.processing.pipeline_version}</span>
-        <span className="chip">{post.processing.embedding_backend}</span>
-        <span className="chip">{post.processing.redaction_count} redactions</span>
-        <span className="chip">{Math.round(post.processing.total_duration_ms)} ms total</span>
-      </div>
-      <div className="processing-stage-list" role="list" aria-label="Processing stages">
-        {visibleStages.map((stage) => (
-          <div key={`${post.id}-${stage.name}`} className="processing-stage-item" role="listitem">
-            <div>
-              <strong>{formatLabel(stage.name)}</strong>
-              {stage.detail ? <p>{stage.detail}</p> : null}
-            </div>
-            <span>{Math.round(stage.duration_ms)} ms</span>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 export function MediaRecommendationPanel({
   items
 }: {
@@ -251,32 +218,16 @@ export function MediaRecommendationPanel({
     return null;
   }
 
-  const songs = items.filter((item) => item.kind === "song");
-  const movies = items.filter((item) => item.kind === "movie");
-
   return (
     <section className="glass-panel media-panel">
       <div className="section-heading">
         <p className="section-kicker">After the letter</p>
-        <h2>What else might understand this feeling.</h2>
+        <h2>A few songs and films nearby.</h2>
       </div>
-      <div className="media-section">
-        <div>
-          <h3>Songs</h3>
-          <div className="media-list">
-            {songs.map((item) => (
-              <MediaCard key={`${item.kind}-${item.title}`} item={item} />
-            ))}
-          </div>
-        </div>
-        <div>
-          <h3>Movies</h3>
-          <div className="media-list">
-            {movies.map((item) => (
-              <MediaCard key={`${item.kind}-${item.title}`} item={item} />
-            ))}
-          </div>
-        </div>
+      <div className="media-section media-section-compact">
+        {items.slice(0, 6).map((item) => (
+          <MediaCard key={`${item.kind}-${item.title}`} item={item} />
+        ))}
       </div>
     </section>
   );
@@ -291,14 +242,14 @@ function MediaCard({ item }: { item: MediaRecommendation }) {
         <span>{item.year}</span>
       </div>
       <h4>{item.title}</h4>
-      <p>{item.explanation}</p>
+      <p className="media-card-copy">{item.explanation}</p>
       <div className="chip-row">
-        {item.shared_themes.map((theme) => (
+        {item.shared_themes.slice(0, 2).map((theme) => (
           <span key={`${item.title}-${theme}`} className="chip">
             {formatLabel(theme)}
           </span>
         ))}
-        {item.shared_emotions.map((emotion) => (
+        {item.shared_emotions.slice(0, 1).map((emotion) => (
           <span key={`${item.title}-${emotion}`} className="chip">
             {formatLabel(emotion)}
           </span>
@@ -339,13 +290,11 @@ export function SimilarityInsightCard({ item }: { item: SimilarPost }) {
           {item.post.attribution.year ? ` · ${item.post.attribution.year}` : ""}
         </p>
       )}
-      <p>{item.narrative_explanation}</p>
-      <p className="constellation-meta">{item.supporting_excerpt}</p>
-      <div className="insight-stack">
-        <InsightLine label="Shared themes" values={item.shared_themes} />
-        <InsightLine label="Shared emotions" values={item.shared_emotions} />
-        <InsightLine label="Keywords" values={item.shared_keywords} />
-        <InsightLine label="Dominant tone" values={[item.dominant_tone]} />
+      <p className="insight-copy">{item.narrative_explanation}</p>
+      <p className="supporting-excerpt">{item.supporting_excerpt}</p>
+      <div className="insight-stack compact-insight-stack">
+        <InsightLine label="Shared themes" values={item.shared_themes.slice(0, 2)} />
+        <InsightLine label="Shared emotions" values={item.shared_emotions.slice(0, 2)} />
       </div>
       <Link className="continue-reading related-link" to={`/archive/${item.post.id}`}>
         Continue Reading →
@@ -372,122 +321,6 @@ function InsightLine({ label, values }: { label: string; values: string[] }) {
   );
 }
 
-export function ConnectionConstellation({
-  centerPost,
-  related
-}: {
-  centerPost: PostSummary;
-  related: SimilarPost[];
-}) {
-  const width = 760;
-  const height = 420;
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const constellation = related
-    .slice(0, 7)
-    .sort((left, right) => right.embedding_similarity - left.embedding_similarity);
-  const [hoveredId, setHoveredId] = useState<number>(constellation[0]?.post.id ?? centerPost.id);
-  const similarityValues = constellation.map((item) => item.embedding_similarity);
-  const maxSimilarity = Math.max(...similarityValues, 1);
-  const minSimilarity = Math.min(...similarityValues, 0);
-  const nodes = constellation.map((item, index) => {
-    const angle = (-Math.PI / 2) + (index * (Math.PI * 2)) / Math.max(constellation.length, 1);
-    const normalized = maxSimilarity === minSimilarity
-      ? 0.55
-      : (item.embedding_similarity - minSimilarity) / (maxSimilarity - minSimilarity);
-    const radius = 82 + (1 - normalized) * 148;
-    return {
-      item,
-      normalized,
-      x: centerX + Math.cos(angle) * radius,
-      y: centerY + Math.sin(angle) * radius
-    };
-  });
-  const hoveredNode = nodes.find((node) => node.item.post.id === hoveredId) ?? nodes[0] ?? null;
-
-  return (
-    <section className="glass-panel constellation-panel">
-      <div className="section-heading">
-        <p className="section-kicker">Connection graph</p>
-        <h2>A quiet constellation around your letter.</h2>
-      </div>
-      <div className="constellation-layout">
-        <svg viewBox={`0 0 ${width} ${height}`} className="constellation-graph" role="img" aria-label="Connection graph">
-        <defs>
-          <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="rgba(229, 184, 174, 0.95)" />
-            <stop offset="100%" stopColor="rgba(215, 196, 156, 0.15)" />
-          </radialGradient>
-        </defs>
-        {nodes.map(({ item, x, y }) => (
-          <g
-            key={item.post.id}
-            className="constellation-node-group"
-            onMouseEnter={() => setHoveredId(item.post.id)}
-            onFocus={() => setHoveredId(item.post.id)}
-          >
-            <path
-              d={`M ${centerX} ${centerY} Q ${(centerX + x) / 2} ${(centerY + y) / 2 - 20} ${x} ${y}`}
-              className="constellation-line"
-            />
-            <a href={`/archive/${item.post.id}`} aria-label={`Open ${item.post.title}`}>
-              <circle cx={x} cy={y} r="10" className="constellation-node" />
-              <circle cx={x} cy={y} r="34" className="constellation-node-halo" />
-              <title>
-                {item.post.title} — {item.post.source_label}; {Math.round(item.embedding_similarity * 100)}% similarity;
-                themes: {item.shared_themes.join(", ") || "none"}; emotions: {item.shared_emotions.join(", ") || "none"}
-              </title>
-            </a>
-          </g>
-        ))}
-        <circle cx={centerX} cy={centerY} r="13" className="constellation-node constellation-node-center" />
-        <circle cx={centerX} cy={centerY} r="36" className="constellation-node-halo constellation-node-halo-center" />
-        <text x={centerX} y={centerY + 68} textAnchor="middle" className="constellation-center-label">
-          {centerPost.content_type === "community" ? "Your letter" : centerPost.title}
-        </text>
-        </svg>
-        <div className="constellation-inspector glass-panel">
-          {hoveredNode ? (
-            <>
-              <p className="source-chip">{hoveredNode.item.post.source_label}</p>
-              <h3>{hoveredNode.item.post.title}</h3>
-              <p>{hoveredNode.item.narrative_explanation}</p>
-              <div className="chip-row">
-                {hoveredNode.item.shared_themes.slice(0, 3).map((theme) => (
-                  <span key={`theme-${hoveredNode.item.post.id}-${theme}`} className="chip">
-                    {formatLabel(theme)}
-                  </span>
-                ))}
-                {hoveredNode.item.shared_emotions.slice(0, 2).map((emotion) => (
-                  <span key={`emotion-${hoveredNode.item.post.id}-${emotion}`} className="chip">
-                    {formatLabel(emotion)}
-                  </span>
-                ))}
-              </div>
-              <p className="constellation-meta">
-                {Math.round(hoveredNode.item.embedding_similarity * 100)}% similarity ·{" "}
-                {getPreview(hoveredNode.item.post.raw_text, 1)}
-              </p>
-              <Link className="button secondary" to={`/archive/${hoveredNode.item.post.id}`}>
-                Open writing
-              </Link>
-            </>
-          ) : null}
-        </div>
-      </div>
-      <div className="constellation-legend">
-        {nodes.map(({ item }) => (
-          <Link key={item.post.id} to={`/archive/${item.post.id}`} className="constellation-preview glass-panel">
-            <p>{item.post.title}</p>
-            <span>{item.post.source_label}</span>
-            <span>{Math.round(item.embedding_similarity * 100)}% similarity</span>
-          </Link>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 export function EchoesCarousel({
   chain,
   activeId,
@@ -504,8 +337,8 @@ export function EchoesCarousel({
   return (
     <section className="glass-panel echoes-panel">
       <div className="section-heading">
-        <p className="section-kicker">Echoes</p>
-        <h2>One letter leading softly to the next.</h2>
+        <p className="section-kicker">Archival sequels and prequels to your work</p>
+        <h2>Letters that come before and after yours.</h2>
       </div>
       <div className="echoes-journey" role="list" aria-label="Semantically connected writings">
         {chain.map((step, index) => {
@@ -560,20 +393,20 @@ export function EmotionalTimeline({
   return (
     <section className="glass-panel timeline-panel">
       <div className="section-heading">
-        <p className="section-kicker">Emotional timeline</p>
+        <p className="section-kicker">Letters like yours throughout the years</p>
         <h2>The same feeling, crossing generations.</h2>
       </div>
       <div className="timeline-list">
         {entries.map((post) => (
           <Link key={post.id} to={`/archive/${post.id}`} className="timeline-item">
-            <span className="timeline-year">{post.timeline_label}</span>
-            <div>
-              <p>{post.title}</p>
-              <span>
-                {post.attribution?.author ?? "Anonymous Dearest letter"} · {post.source_label}
-              </span>
-            </div>
-          </Link>
+              <span className="timeline-year">{post.timeline_label}</span>
+              <div>
+                <p>{post.title}</p>
+                <span>
+                  {post.attribution?.author ?? <>Anonymous <em>Dearest</em> letter</>} · {post.source_label}
+                </span>
+              </div>
+            </Link>
         ))}
       </div>
     </section>

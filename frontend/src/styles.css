@@ -373,6 +373,7 @@ button {
 }
 
 .brand {
+  display: inline-block;
   font-family: "Cormorant Garamond", serif;
   font-style: italic;
   font-weight: 700;
@@ -380,6 +381,16 @@ button {
   line-height: 1;
   letter-spacing: 0.01em;
   color: var(--moonlight-ivory);
+  transform: skewX(-10deg);
+  transform-origin: left center;
+}
+
+.brand em {
+  font-style: inherit;
+}
+
+.brand-inline {
+  font-size: 1em;
 }
 
 .nav-cta {
@@ -1476,6 +1487,7 @@ textarea {
 .story-article,
 .story-fingerprint,
 .story-related,
+.story-secondary-grid,
 .story-explore {
   margin-bottom: 44px;
 }
@@ -1632,6 +1644,64 @@ textarea {
 
 .story-related .related-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.story-related-compact .section-heading {
+  margin-bottom: 16px;
+}
+
+.story-related-compact .related-grid.compact-related-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.story-related-compact .related-card {
+  padding: 18px;
+}
+
+.story-related-compact .post-meta {
+  margin-bottom: 10px;
+}
+
+.story-related-compact .related-card h3 {
+  margin-bottom: 8px;
+  font-size: 1.55rem;
+}
+
+.insight-copy,
+.supporting-excerpt {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.insight-copy {
+  -webkit-line-clamp: 3;
+}
+
+.supporting-excerpt {
+  -webkit-line-clamp: 2;
+}
+
+.compact-insight-stack {
+  gap: 10px;
+  margin: 12px 0 14px;
+}
+
+.compact-insight-stack .chip {
+  padding: 6px 10px;
+  font-size: 0.76rem;
+}
+
+.story-secondary-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.9fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.story-secondary-grid > * {
+  min-width: 0;
 }
 
 .story-explore {
@@ -2210,7 +2280,6 @@ textarea {
 
 .archive-explorer-panel,
 .story-source-panel,
-.constellation-panel,
 .echoes-panel,
 .timeline-panel {
   padding: 28px;
@@ -2218,9 +2287,7 @@ textarea {
 
 .archive-explorer-panel,
 .story-source-panel,
-.constellation-shell,
 .story-related,
-.timeline-panel,
 .story-explore {
   margin-top: 24px;
 }
@@ -2240,7 +2307,6 @@ textarea {
 }
 
 .story-source-panel h3,
-.constellation-preview p,
 .timeline-item p,
 .echo-step-title,
 .insight-line span:first-child {
@@ -2275,65 +2341,16 @@ textarea {
   margin-top: 22px;
 }
 
-.constellation-graph {
-  width: 100%;
-  height: auto;
-  overflow: visible;
-}
-
-.constellation-line {
-  stroke: rgba(215, 196, 156, 0.33);
-  stroke-width: 1.2;
-  stroke-dasharray: 3 8;
-}
-
-.constellation-node {
-  fill: var(--accent-soft);
-  stroke: rgba(255, 248, 237, 0.55);
-  stroke-width: 1;
-}
-
-.constellation-node-center {
-  fill: var(--accent);
-}
-
-.constellation-node-halo {
-  fill: rgba(215, 196, 156, 0.1);
-}
-
-.constellation-node-group:hover .constellation-node,
-.constellation-node-group:focus-within .constellation-node {
-  animation: nodePulse 2.6s ease-in-out infinite;
-}
-
-.constellation-center-label {
-  fill: var(--text-main);
-  font-size: 14px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.constellation-legend {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 18px;
-}
-
-.constellation-preview {
-  display: grid;
-  gap: 4px;
-  padding: 16px 18px;
-  border-radius: 18px;
-}
-
-.constellation-preview span,
 .timeline-item span:last-child,
 .echo-step-source,
 .echo-step-meta,
 .echoes-caption {
   color: var(--text-faint);
   font-size: 0.92rem;
+}
+
+.supporting-excerpt {
+  color: var(--text-faint);
 }
 
 .insight-card {
@@ -2428,15 +2445,13 @@ textarea {
 }
 
 @media (max-width: 980px) {
-  .explorer-controls,
-  .constellation-legend {
+  .explorer-controls {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 720px) {
   .explorer-controls,
-  .constellation-legend,
   .echoes-chain {
     grid-template-columns: 1fr;
   }
@@ -2444,13 +2459,6 @@ textarea {
   .attribution-grid,
   .timeline-item {
     grid-template-columns: 1fr;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .constellation-node-group:hover .constellation-node,
-  .constellation-node-group:focus-within .constellation-node {
-    animation: none;
   }
 }
 
@@ -2520,73 +2528,6 @@ textarea {
 
 .content-note-body {
   padding: 0 24px 22px;
-}
-
-.constellation-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
-  gap: 20px;
-  align-items: stretch;
-}
-
-.constellation-panel {
-  background:
-    radial-gradient(circle at 50% 50%, rgba(215, 196, 156, 0.05), transparent 42%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.015)),
-    var(--panel);
-}
-
-.constellation-graph {
-  min-height: 420px;
-}
-
-.constellation-line {
-  fill: none;
-  stroke: rgba(215, 196, 156, 0.3);
-  stroke-width: 1.2;
-  stroke-linecap: round;
-  stroke-dasharray: 3 8;
-  animation: constellationPulse 9s linear infinite;
-}
-
-.constellation-node {
-  fill: rgba(229, 184, 174, 0.96);
-  filter: drop-shadow(0 0 14px rgba(229, 184, 174, 0.35));
-}
-
-.constellation-node-halo {
-  fill: rgba(215, 196, 156, 0.08);
-  transition: transform var(--dur-standard) ease, fill var(--dur-standard) ease;
-}
-
-.constellation-node-group:hover .constellation-node-halo,
-.constellation-node-group:focus-within .constellation-node-halo {
-  fill: rgba(215, 196, 156, 0.16);
-  transform: scale(1.08);
-  transform-origin: center;
-}
-
-.constellation-inspector {
-  display: grid;
-  align-content: start;
-  gap: 12px;
-  padding: 22px;
-  border-radius: 22px;
-}
-
-.constellation-inspector h3 {
-  margin: 0;
-  font-family: "Cormorant Garamond", serif;
-  font-size: clamp(1.7rem, 1.3rem + 1vw, 2.3rem);
-  line-height: 1;
-}
-
-.constellation-meta {
-  color: var(--text-faint);
-}
-
-.constellation-legend {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .echoes-panel {
@@ -2680,11 +2621,6 @@ textarea {
   color: var(--text);
 }
 
-.archive-intelligence-panel {
-  display: grid;
-  gap: 18px;
-}
-
 .media-panel {
   display: grid;
   gap: 20px;
@@ -2692,14 +2628,8 @@ textarea {
 
 .media-section {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
-}
-
-.media-section h3 {
-  margin: 0 0 12px;
-  font-family: "Cormorant Garamond", serif;
-  font-size: 1.5rem;
 }
 
 .media-list {
@@ -2709,8 +2639,9 @@ textarea {
 
 .media-card {
   display: grid;
-  gap: 10px;
-  padding: 18px;
+  align-content: start;
+  gap: 8px;
+  padding: 16px;
   border-radius: 20px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 58%),
@@ -2730,20 +2661,27 @@ textarea {
   color: var(--text-soft);
 }
 
+.media-card-copy {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 0.95rem;
+}
+
+.media-card .chip-row {
+  gap: 8px;
+}
+
+.media-card .chip {
+  padding: 6px 10px;
+  font-size: 0.76rem;
+}
+
 .media-link {
   justify-self: start;
-}
-
-.archive-intelligence-copy {
-  max-width: 780px;
-  margin: 0;
-  color: var(--text-soft);
-}
-
-.archive-intelligence-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
 }
 
 .processing-stage-item {
@@ -2756,24 +2694,16 @@ textarea {
   font-size: 0.95rem;
 }
 
-@keyframes constellationPulse {
-  0% {
-    stroke-dashoffset: 0;
-    opacity: 0.45;
-  }
-  50% {
-    opacity: 0.9;
-  }
-  100% {
-    stroke-dashoffset: -22;
-    opacity: 0.45;
+@media (max-width: 1080px) {
+  .story-secondary-grid,
+  .story-related .related-grid {
+    grid-template-columns: 1fr;
   }
 }
 
-@media (max-width: 1080px) {
-  .constellation-layout,
-  .constellation-legend {
-    grid-template-columns: 1fr;
+@media (max-width: 980px) {
+  .media-section {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -2791,16 +2721,5 @@ textarea {
 
   .media-section {
     grid-template-columns: 1fr;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .constellation-line {
-    animation: none;
-  }
-
-  .constellation-node-group:hover .constellation-node-halo,
-  .constellation-node-group:focus-within .constellation-node-halo {
-    transform: none;
   }
 }

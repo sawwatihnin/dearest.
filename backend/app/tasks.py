@@ -12,13 +12,14 @@ from .services import ProcessingService
     bind=True,
     autoretry_for=(Exception,),
     retry_backoff=True,
+    retry_jitter=True,
     retry_backoff_max=8,
     retry_kwargs={"max_retries": 3},
 )
 def process_post_job(self, job_id: str):
     with SessionLocal() as db:
         services = build_services(db)
-        processing_service = ProcessingService(db, services["post_service"])
+        processing_service = services["processing_service"]
         result = processing_service.process_job(job_id)
         if result.status == "FAILED":
             raise RuntimeError(result.error or "Unknown job failure")

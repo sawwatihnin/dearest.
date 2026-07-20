@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: dearest-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: python -m alembic -c backend/alembic.ini upgrade head && cd backend && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /docs
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DEAREST_CELERY_TASK_ALWAYS_EAGER
+        value: "true"
+      - key: DEAREST_VECTOR_BACKEND
+        value: local
+      - key: DEAREST_CORS_ORIGINS
+        value: http://localhost:5173,http://127.0.0.1:5173

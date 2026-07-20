@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
@@ -26,11 +28,16 @@ from ..ai import (
 )
 from ..database import get_db
 from ..repositories import PostRepository
+from ..runtime_state import TransientStateStore
 from ..services import PostService, ProcessingService
+from ..settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 def build_services(db: Session) -> dict[str, object]:
     """Build explicit request-scoped services for routes and tasks."""
+    settings = get_settings()
     embedding_service = EmbeddingService()
     explainability_service = ExplainabilityService(embedding_service=embedding_service)
     emotion_analyzer = EmotionAnalyzer()
@@ -46,7 +53,8 @@ def build_services(db: Session) -> dict[str, object]:
         explainability_service=explainability_service,
         embedding_service=embedding_service,
     )
-    retrieval_service = RetrievalService(embedding_service=embedding_service)
+    vector_storage = _build_vector_storage(settings.vector_backend, embedding_service, settings.qdrant_path)
+    retrieval_service = RetrievalService(embedding_service=embedding_service, vector_storage=vector_storage)
     ranking_service = RankingService()
     explanation_service = ExplanationService()
     recommendation_service_v2 = RecommendationServiceV2(
@@ -76,11 +84,15 @@ def build_services(db: Session) -> dict[str, object]:
         recommendation_service_v2=recommendation_service_v2,
         evaluation_service=evaluation_service,
     )
+    transient_state_store = TransientStateStore(settings.redis_state_url)
+    processing_service = ProcessingService(db, post_service, transient_state_store=transient_state_store)
     return {
         "post_service": post_service,
+        "processing_service": processing_service,
         "embedding_service": embedding_service,
         "recommendation_service_v2": recommendation_service_v2,
         "evaluation_service": evaluation_service,
+        "vector_storage": vector_storage,
     }
 
 
@@ -91,4 +103,21 @@ def get_post_service(db: Session = Depends(get_db)) -> PostService:
 
 def get_processing_service(db: Session = Depends(get_db)) -> ProcessingService:
     """Build async processing orchestration service."""
-    return ProcessingService(db, get_post_service(db))
+    return build_services(db)["processing_service"]  # type: ignore[return-value]
+
+
+def _build_vector_storage(kind: str, embedding_service: EmbeddingService, qdrant_path: str):
+    from ..ai.vector_store import LocalVectorStorage, PgvectorVectorStorage, QdrantLocalVectorStorage
+
+    normalized = (kind or "local").lower()
+    if normalized == "pgvector":
+        return PgvectorVectorStorage()
+    if normalized == "qdrant":
+        try:
+            return QdrantLocalVectorStorage(embedding_service, qdrant_path)
+        except Exception as exc:
+            logger.warning(
+                "Falling back to local vector storage because qdrant-local could not initialize: %s",
+                exc,
+            )
+    return LocalVectorStorage(embedding_service)

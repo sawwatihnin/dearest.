@@ -117,6 +117,7 @@ class PostCreateResponse(BaseModel):
     redactions: list[RedactionPayload] = Field(default_factory=list)
     job_id: str | None = None
     status: str | None = None
+    correlation_id: str | None = None
 
 
 class SimilarPostsResponse(BaseModel):
@@ -129,6 +130,7 @@ class SimilarPostsResponse(BaseModel):
 class JobStatusResponse(BaseModel):
     job_id: str
     status: str
+    correlation_id: str | None = None
     post: PostSummary | None = None
     similar_posts: list[SimilarPost] = Field(default_factory=list)
     media_recommendations: list[MediaRecommendation] = Field(default_factory=list)

@@ -12,10 +12,8 @@ import {
 
 import { createPost, fetchArchiveExplorer, fetchEchoes, fetchJobStatus, fetchPost, fetchSimilarPosts } from "./api";
 import {
-  ArchiveIntelligencePanel,
   ArchiveExplorerControls,
   AttributionPanel,
-  ConnectionConstellation,
   ContentNotePanel,
   EchoesCarousel,
   EmotionalTimeline,
@@ -35,6 +33,8 @@ import type {
   PostSummary,
   SimilarPostsResponse
 } from "./types";
+
+const STORY_RETRY_DELAY_MS = 350;
 
 const moodOptions: Mood[] = [
   "heartbreak",
@@ -437,7 +437,6 @@ function StoryPage() {
   const [error, setError] = useState<string | null>(null);
   const fingerprintReveal = useSectionReveal<HTMLElement>();
   const relatedReveal = useSectionReveal<HTMLElement>();
-  const constellationReveal = useSectionReveal<HTMLElement>();
   const echoesReveal = useSectionReveal<HTMLElement>();
   const timelineReveal = useSectionReveal<HTMLElement>();
   const featuredMatch = related?.similar_posts[0] ?? null;
@@ -457,19 +456,35 @@ function StoryPage() {
     try {
       setLoading(true);
       setError(null);
-      const [story, matches, echoChain] = await Promise.all([
-        fetchPost(postId),
-        fetchSimilarPosts(postId, 6),
-        fetchEchoes(postId, 5)
-      ]);
+      const story = await fetchPost(postId);
       setPost(story);
+
+      const matches = await loadOptionalStoryData(() => fetchSimilarPosts(postId, 6));
       setRelated(matches);
+
+      const echoChain = await loadOptionalStoryData(() => fetchEchoes(postId, 5));
       setEchoes(echoChain);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load the story.");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadOptionalStoryData<T>(loader: () => Promise<T>, attempts = 3): Promise<T | null> {
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        return await loader();
+      } catch (error) {
+        lastError = error;
+        if (attempt < attempts - 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, STORY_RETRY_DELAY_MS * (attempt + 1)));
+        }
+      }
+    }
+    console.warn("Optional story data failed to load.", lastError);
+    return null;
   }
 
   const semanticAxes = post ? getTopSemanticConcepts(post.semantic_profile, 5) : [];
@@ -516,7 +531,6 @@ function StoryPage() {
             <AttributionPanel post={post} />
             <ContentNotePanel post={post} />
             <MediaRecommendationPanel items={related?.media_recommendations ?? []} />
-            <ArchiveIntelligencePanel post={post} />
 
             <section
               className={`story-fingerprint glass-panel ${fingerprintReveal.className}`}
@@ -579,23 +593,40 @@ function StoryPage() {
               </div>
             </section>
 
-            <section
-              className={`story-related constellation-shell ${constellationReveal.className}`}
-              ref={constellationReveal.ref}
-            >
-              <ConnectionConstellation centerPost={post} related={related?.similar_posts ?? []} />
-            </section>
+            {(echoes || related) && (
+              <section className="story-secondary-grid">
+                {echoes && (
+                  <div className={echoesReveal.className} ref={echoesReveal.ref}>
+                    <EchoesCarousel
+                      chain={echoes.chain}
+                      activeId={post.id}
+                      onSelect={(nextId) => navigate(`/archive/${nextId}`)}
+                    />
+                  </div>
+                )}
 
-            <section className={`story-related ${relatedReveal.className}`} ref={relatedReveal.ref}>
+                {(related || echoes) && (
+                  <div className={timelineReveal.className} ref={timelineReveal.ref}>
+                    <EmotionalTimeline
+                      current={post}
+                      related={related?.similar_posts ?? []}
+                      echoes={echoes?.chain ?? []}
+                    />
+                  </div>
+                )}
+              </section>
+            )}
+
+            <section className={`story-related story-related-compact ${relatedReveal.className}`} ref={relatedReveal.ref}>
               <div className="section-heading">
                 <p className="section-kicker">Similar letters</p>
                 <h2>Some stories quietly find each other.</h2>
               </div>
               {related?.similar_posts.length ? (
-            <div className="related-grid">
-              {related.similar_posts.slice(0, 4).map((item) => (
-                <SimilarityInsightCard key={item.post.id} item={item} />
-              ))}
+                <div className="related-grid compact-related-grid">
+                  {related.similar_posts.slice(0, 4).map((item) => (
+                    <SimilarityInsightCard key={item.post.id} item={item} />
+                  ))}
                 </div>
               ) : (
                 <div className="glass-panel empty-state">
@@ -603,22 +634,6 @@ function StoryPage() {
                 </div>
               )}
             </section>
-
-            {echoes && (
-              <section className={echoesReveal.className} ref={echoesReveal.ref}>
-                <EchoesCarousel
-                  chain={echoes.chain}
-                  activeId={post.id}
-                  onSelect={(nextId) => navigate(`/archive/${nextId}`)}
-                />
-              </section>
-            )}
-
-            {related && echoes && (
-              <section className={timelineReveal.className} ref={timelineReveal.ref}>
-                <EmotionalTimeline current={post} related={related.similar_posts} echoes={echoes.chain} />
-              </section>
-            )}
 
             <section className="story-explore">
               <Link className="button secondary" to={`/archive?relatedTo=${post.id}`}>
@@ -843,11 +858,11 @@ function BrandMark({ className = "" }: { className?: string }) {
 
 function BrandInline() {
   return (
-    <>
+    <span className="brand brand-inline">
       <strong>
         <em>Dearest.</em>
       </strong>
-    </>
+    </span>
   );
 }
 

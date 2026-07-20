@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from .types import ModerationResult
+from ..telemetry import registry
 
 CONTENT_WARNING_TERMS = {
     "abuse",
@@ -73,6 +74,8 @@ class ModerationService:
         contextual_adjustment = 0.2 if memoir_context_hits and not blocked_rules else 0.0
         risk_score = round(min(len(flags) * 0.08 + len(blocked_rules) * 0.6 - contextual_adjustment, 1.0), 3)
         safe = not blocked_rules
+        if not safe:
+            registry.increment("dearest_moderation_blocks_total")
         return ModerationResult(
             safe=safe,
             flags=flags + blocked_rules,

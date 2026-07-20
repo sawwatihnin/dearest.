@@ -17,6 +17,7 @@ class DeadLetterQueueEntry(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     job_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    correlation_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     payload_json: Mapped[str] = mapped_column(Text, nullable=False)
     error_type: Mapped[str] = mapped_column(String(255), nullable=False)

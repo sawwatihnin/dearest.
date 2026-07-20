@@ -74,6 +74,14 @@ def ensure_schema() -> None:
             connection.execute(
                 text("ALTER TABLE posts ADD COLUMN processing_trace_json TEXT NOT NULL DEFAULT '{}'")
             )
+        if "embedding_versions_json" not in columns:
+            connection.execute(
+                text("ALTER TABLE posts ADD COLUMN embedding_versions_json TEXT NOT NULL DEFAULT '[]'")
+            )
+        if "pipeline_versions_json" not in columns:
+            connection.execute(
+                text("ALTER TABLE posts ADD COLUMN pipeline_versions_json TEXT NOT NULL DEFAULT '[]'")
+            )
     tables = set(inspector.get_table_names())
     with engine.begin() as connection:
         if "processing_jobs" not in tables:
@@ -84,23 +92,32 @@ def ensure_schema() -> None:
                     "content_hash VARCHAR(64) NOT NULL UNIQUE, "
                     "pipeline_version VARCHAR(64) NOT NULL, "
                     "status VARCHAR(32) NOT NULL DEFAULT 'PENDING', "
+                    "correlation_id VARCHAR(64), "
                     "payload_json TEXT NOT NULL, "
                     "result_json TEXT, "
                     "post_id INTEGER, "
                     "attempt_count INTEGER NOT NULL DEFAULT 0, "
                     "error_message TEXT, "
+                    "terminal_trace_json TEXT, "
                     "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "
                     "updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "
                     "FOREIGN KEY(post_id) REFERENCES posts (id)"
                     ")"
                 )
             )
+        else:
+            job_columns = {column["name"] for column in inspector.get_columns("processing_jobs")}
+            if "correlation_id" not in job_columns:
+                connection.execute(text("ALTER TABLE processing_jobs ADD COLUMN correlation_id VARCHAR(64)"))
+            if "terminal_trace_json" not in job_columns:
+                connection.execute(text("ALTER TABLE processing_jobs ADD COLUMN terminal_trace_json TEXT"))
         if "dead_letter_queue" not in tables:
             connection.execute(
                 text(
                     "CREATE TABLE dead_letter_queue ("
                     "id INTEGER PRIMARY KEY, "
                     "job_id VARCHAR(64), "
+                    "correlation_id VARCHAR(64), "
                     "content_hash VARCHAR(64) NOT NULL, "
                     "payload_json TEXT NOT NULL, "
                     "error_type VARCHAR(255) NOT NULL, "
@@ -110,3 +127,7 @@ def ensure_schema() -> None:
                     ")"
                 )
             )
+        else:
+            dlq_columns = {column["name"] for column in inspector.get_columns("dead_letter_queue")}
+            if "correlation_id" not in dlq_columns:
+                connection.execute(text("ALTER TABLE dead_letter_queue ADD COLUMN correlation_id VARCHAR(64)"))

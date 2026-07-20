@@ -64,7 +64,14 @@ python3 -m pip install -r requirements.txt
 python3 -m uvicorn app.main:app --reload
 ```
 
-Use `python3 -m uvicorn`, not bare `uvicorn`, so the command always resolves inside the active environment. The API starts at `http://127.0.0.1:8000`. The SQLite database auto-creates at `backend/dearest.db`.
+Before starting the API, apply the schema migration once:
+
+```bash
+cd /Users/saw/Documents/dearest
+backend/.venv/bin/python -m alembic -c backend/alembic.ini upgrade head
+```
+
+Use `python3 -m uvicorn`, not bare `uvicorn`, so the command always resolves inside the active environment. The API starts at `http://127.0.0.1:8000`.
 
 ### 2. Frontend
 
@@ -166,13 +173,28 @@ The evaluation script reports:
 - dominant semantic clusters
 - top-1 same-source vs cross-source retrieval counts
 
+Backfill the ANN index for existing posts:
+
+```bash
+cd /Users/saw/Documents/dearest
+backend/.venv/bin/python -m backend.app.reindex_embeddings
+```
+
+Benchmark brute-force cosine against qdrant-local ANN:
+
+```bash
+cd /Users/saw/Documents/dearest
+backend/.venv/bin/python -m backend.app.benchmark_retrieval
+```
+
 ## Notes on algorithm choices
 
 - Summarization is intentionally extractive and lightweight so the demo remains local, deterministic, and fast.
 - Keyword extraction uses a simple RAKE-style scoring pass over phrase segments, which works well for emotional writing without extra infrastructure.
 - Mood detection uses curated lexicons plus a boost from the user-selected mood so the UI and detected label stay aligned when phrasing is ambiguous.
-- Similarity uses sentence embeddings only if `sentence-transformers` is installed locally. Otherwise the app falls back to TF-IDF vectors and cosine similarity, which keeps the MVP reliable without requiring a large model download.
+- Similarity uses sentence embeddings only if `sentence-transformers` is installed locally. Otherwise the app falls back to hashed TF-IDF vectors so the ANN index can still persist and query embeddings locally.
 - Semantic matching searches across both `community` and `public_archive` content types, then returns source metadata so the UI can distinguish them clearly.
+- The active local retrieval backend is qdrant-local; a deterministic in-process cosine backend remains in the repo for tests and baselines.
 
 ## Optional upgrade
 

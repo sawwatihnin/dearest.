@@ -26,6 +26,7 @@ class JobRepository:
         content_hash: str,
         pipeline_version: str,
         payload_json: str,
+        correlation_id: str | None = None,
         status: str = "PENDING",
     ) -> ProcessingJob:
         job = ProcessingJob(
@@ -33,6 +34,7 @@ class JobRepository:
             content_hash=content_hash,
             pipeline_version=pipeline_version,
             payload_json=payload_json,
+            correlation_id=correlation_id,
             status=status,
         )
         self._session.add(job)
@@ -55,9 +57,11 @@ class JobRepository:
         error_type: str,
         error_message: str,
         traceback_text: str,
+        correlation_id: str | None = None,
     ) -> DeadLetterQueueEntry:
         entry = DeadLetterQueueEntry(
             job_id=job_id,
+            correlation_id=correlation_id,
             content_hash=content_hash,
             payload_json=payload_json,
             error_type=error_type,
@@ -68,3 +72,9 @@ class JobRepository:
         self._session.commit()
         self._session.refresh(entry)
         return entry
+
+    def list_dead_letters(self) -> list[DeadLetterQueueEntry]:
+        return self._session.query(DeadLetterQueueEntry).order_by(DeadLetterQueueEntry.created_at.desc()).all()
+
+    def get_dead_letter(self, entry_id: int) -> DeadLetterQueueEntry | None:
+        return self._session.query(DeadLetterQueueEntry).filter(DeadLetterQueueEntry.id == entry_id).first()

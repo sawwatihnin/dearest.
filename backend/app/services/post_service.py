@@ -34,6 +34,7 @@ from ..schemas import (
     SimilarPostsResponse,
 )
 from ..settings import get_settings
+from ..telemetry import registry
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +186,10 @@ class PostService:
             processing_trace_json=self._embedding_service.serialize_json(asdict(analysis.processing_trace)),
             embedding_json=self._embedding_service.serialize_vector(analysis.embedding.vector),
             embedding_model=analysis.embedding.embedding_model,
+            embedding_versions_json=self._embedding_service.serialize_list([analysis.embedding.embedding_model]),
+            pipeline_versions_json=self._embedding_service.serialize_list([analysis.processing_trace.pipeline_version]),
         )
+        registry.increment("dearest_posts_created_total")
         self._log_saved_post(
             original_text=payload.text,
             saved_text=post.raw_text,
@@ -201,6 +205,59 @@ class PostService:
             pii_detected=analysis.redaction.pii_detected,
             redactions=[self._to_redaction_payload(item) for item in analysis.redaction.redactions],
         )
+
+    def reindex_post(self, post_id: int) -> PostSummary | None:
+        post = self._repository.get_post(post_id)
+        if post is None:
+            return None
+        analysis = self._pipeline.process_story(
+            post.private_raw_text or post.raw_text,
+            selected_mood=post.selected_mood,
+            title=post.title,
+            enforce_moderation=False,
+            redact_pii=post.content_type == "community",
+        )
+        updated = self._repository.update_post(
+            post,
+            content_hash=post.content_hash,
+            content_type=post.content_type,
+            ingestion_key=post.ingestion_key,
+            title=analysis.title,
+            raw_text=analysis.redaction.redacted_text,
+            private_raw_text=post.private_raw_text,
+            hidden_subject=post.hidden_subject,
+            attribution_author=post.attribution_author,
+            attribution_work=post.attribution_work,
+            attribution_year=post.attribution_year,
+            attribution_source=post.attribution_source,
+            attribution_url=post.attribution_url,
+            attribution_rights_status=post.attribution_rights_status,
+            attribution_rights_notes=post.attribution_rights_notes,
+            selected_mood=post.selected_mood,
+            detected_mood=analysis.emotion.dominant_emotion,
+            detected_emotions_json=self._embedding_service.serialize_list(
+                self._emotion_analyzer.top_emotions(analysis.emotion, post.selected_mood)
+            ),
+            emotion_distribution_json=self._embedding_service.serialize_dict(
+                analysis.semantic_projection.emotion_distribution
+            ),
+            summary=analysis.narrative.summary,
+            keywords_json=self._embedding_service.serialize_list(analysis.themes.keywords),
+            keyword_profile_json=self._embedding_service.serialize_dict(analysis.semantic_projection.keyword_profile),
+            semantic_profile_json=self._embedding_service.serialize_dict(analysis.semantic_projection.semantic_profile),
+            cluster_label=analysis.semantic_projection.cluster,
+            warning_terms_json=self._embedding_service.serialize_list(analysis.moderation.flags),
+            selected_content_notes_json=post.selected_content_notes_json,
+            pipeline_version=analysis.processing_trace.pipeline_version,
+            processing_trace_json=self._embedding_service.serialize_json(asdict(analysis.processing_trace)),
+            embedding_json=self._embedding_service.serialize_vector(analysis.embedding.vector),
+            embedding_model=analysis.embedding.embedding_model,
+            embedding_versions_json=self._append_version(post.embedding_versions_json, analysis.embedding.embedding_model),
+            pipeline_versions_json=self._append_version(
+                post.pipeline_versions_json, analysis.processing_trace.pipeline_version
+            ),
+        )
+        return self._to_summary(updated)
 
     def get_similar_posts(self, post_id: int, limit: int = 5) -> SimilarPostsResponse | None:
         """Return similar posts for one source post."""
@@ -706,6 +763,7 @@ class PostService:
             "summary": post.summary,
             "embedding_json": post.embedding_json,
             "embedding_model": post.embedding_model,
+            "pipeline_version": post.pipeline_version,
             "detected_emotions_json": post.detected_emotions_json,
             "semantic_profile_json": post.semantic_profile_json,
             "keywords_json": post.keywords_json,
@@ -755,3 +813,9 @@ class PostService:
                 "embedding_model": post.embedding_model,
             },
         )
+
+    def _append_version(self, serialized_versions: str | None, version: str) -> str:
+        versions = [item for item in self._embedding_service.deserialize_json(serialized_versions or "[]", default=[]) if item]
+        if version not in versions:
+            versions.append(version)
+        return self._embedding_service.serialize_list([str(item) for item in versions])
