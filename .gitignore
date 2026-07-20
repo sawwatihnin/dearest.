@@ -8,3 +8,5 @@ frontend/node_modules/
 frontend/dist/
 frontend/*.tsbuildinfo
 package-lock.json
+.vercel
+.env*
