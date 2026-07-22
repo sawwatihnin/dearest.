@@ -49,6 +49,14 @@ MEMOIR_CONTEXT_PATTERNS = (
     re.compile(r"\b(?:grief|loss|heartbreak|trauma|identity|illness|discrimination)\b"),
 )
 
+SELF_HARM_REFERENCE_PATTERN = re.compile(
+    r"\b(?:self[- ]harm(?:ing)?|suicid(?:e|al)|hurt(?:ing)? myself)\b"
+)
+SELF_HARM_RECOVERY_CONTEXT_PATTERN = re.compile(
+    r"\b(?:surviv(?:e|ed|ing)|recover(?:ed|ing|y)|heal(?:ed|ing)|"
+    r"years? ago|in the past|used to|no longer|formerly|previously)\b"
+)
+
 
 def is_safe_content(text: str) -> bool:
     """Moderate for active harm while allowing autobiographical and reflective writing."""
@@ -68,6 +76,16 @@ class ModerationService:
         flags = [term for term in sorted(CONTENT_WARNING_TERMS) if term in lowered]
         blocked_rules = [rule for rule, pattern in BLOCK_PATTERNS.items() if pattern.search(lowered)]
         memoir_context_hits = [pattern.pattern for pattern in MEMOIR_CONTEXT_PATTERNS if pattern.search(lowered)]
+
+        # A bare/current self-harm disclosure is too ambiguous to publish safely. Preserve
+        # clearly historical recovery writing, but otherwise escalate instead of treating
+        # the phrase as a passive content note.
+        if (
+            SELF_HARM_REFERENCE_PATTERN.search(lowered)
+            and not SELF_HARM_RECOVERY_CONTEXT_PATTERN.search(lowered)
+            and "self_harm_reference" not in blocked_rules
+        ):
+            blocked_rules.append("self_harm_reference")
 
         # Memoir context softens narrative discussion of painful topics, but never overrides
         # direct self-harm intent, threats, or instructions.

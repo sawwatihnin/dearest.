@@ -160,6 +160,30 @@ class PrivacyPipelineTests(unittest.TestCase):
         with self.assertRaises(UnsafeContentError):
             self.pipeline.process_story("I need instructions for how to kill myself without anyone stopping me.")
 
+    def test_pipeline_blocks_ambiguous_self_harm_disclosure(self) -> None:
+        with self.assertRaises(UnsafeContentError):
+            self.pipeline.process_story("I have been thinking about self harm lately and do not know what to do.")
+
+    def test_pipeline_allows_historical_self_harm_recovery_writing(self) -> None:
+        analysis = self.pipeline.process_story(
+            "Years ago I survived self-harm, and this letter is about recovery and healing."
+        )
+
+        self.assertTrue(analysis.moderation.safe)
+        self.assertIn("self-harm", analysis.moderation.flags)
+
+    def test_redacts_an_unlisted_person_name(self) -> None:
+        result = self.redaction_service.sanitize_story(
+            "I told Sarah Johnson that I still miss our long conversations."
+        )
+
+        self.assertTrue(result.ner_executed)
+        self.assertTrue(result.pii_detected)
+        self.assertEqual(
+            result.redacted_text,
+            "I told [PERSON] that I still miss our long conversations.",
+        )
+
     def test_post_service_returns_redactions_and_stores_only_sanitized_public_text(self) -> None:
         payload = PostCreate(
             text=(
