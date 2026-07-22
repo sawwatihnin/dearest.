@@ -106,6 +106,13 @@ class AsyncHardeningTests(unittest.TestCase):
         self.assertEqual(cached.status, "COMPLETED")
         self.assertEqual(cached.correlation_id, "corr-test-123")
 
+        stored = PostRepository(self.session).get_post(finished.post.id)
+        stored.raw_text = "[PERSON] repaired this persisted post."
+        self.session.commit()
+
+        _, refreshed_cache = self.processing_service.submit_post(payload)
+        self.assertEqual(refreshed_cache.post.raw_text, "[PERSON] repaired this persisted post.")
+
 
 if __name__ == "__main__":
     unittest.main()

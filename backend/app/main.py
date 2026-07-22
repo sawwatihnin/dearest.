@@ -12,7 +12,9 @@ from sqlalchemy import inspect
 from starlette.responses import Response
 
 from .api import router
+from .api.deps import build_services
 from .database import SessionLocal, engine
+from .repositories import PostRepository
 from .request_context import set_client_ip, set_correlation_id
 from .seed import seed_posts
 from .settings import get_settings
@@ -29,6 +31,16 @@ async def lifespan(_: FastAPI):
         raise RuntimeError("Database schema missing. Run Alembic migrations before starting Dearest.")
     with SessionLocal() as session:
         seed_posts(session)
+        repository = PostRepository(session)
+        post_service = build_services(session)["post_service"]
+        repaired = 0
+        for post in repository.all_posts():
+            if post.content_type != "community":
+                continue
+            post_service.reindex_post(post.id)  # type: ignore[attr-defined]
+            repaired += 1
+        if repaired:
+            logger.info("privacy.repair completed community_posts=%s", repaired)
     yield
 
 

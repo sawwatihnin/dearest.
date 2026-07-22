@@ -184,6 +184,14 @@ class PrivacyPipelineTests(unittest.TestCase):
             "I told [PERSON] that I still miss our long conversations.",
         )
 
+    def test_redacts_lowercase_name_from_production_report(self) -> None:
+        result = self.redaction_service.sanitize_story("i love cate blanchett")
+
+        self.assertTrue(result.ner_executed)
+        self.assertTrue(result.pii_detected)
+        self.assertEqual(result.redacted_text, "i love [PERSON]")
+        self.assertNotIn("cate blanchett", result.redacted_text)
+
     def test_post_service_returns_redactions_and_stores_only_sanitized_public_text(self) -> None:
         payload = PostCreate(
             text=(

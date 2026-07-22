@@ -38,6 +38,12 @@ class ProcessingService:
         existing = self._jobs.get_job_by_hash(content_hash)
         if existing and existing.status == "COMPLETED" and existing.result_json:
             cached = PostCreateResponse.model_validate_json(existing.result_json)
+            # Completed job payloads can predate a privacy repair. Always serve the
+            # current persisted post instead of an obsolete embedded snapshot.
+            if cached.post is not None:
+                refreshed_post = self._post_service.get_post(cached.post.id)
+                if refreshed_post is not None:
+                    cached.post = refreshed_post
             cached.job_id = existing.id
             cached.status = "COMPLETED"
             cached.correlation_id = existing.correlation_id

@@ -15,6 +15,11 @@ from ..telemetry import registry
 
 SPACY_MODEL_CANDIDATES = ("en_core_web_lg", "en_core_web_md", "en_core_web_sm")
 SPACY_ENTITY_TYPES = {"PERSON", "ORG", "GPE", "LOC", "FAC"}
+LOWERCASE_NAME_CONTEXT_PATTERN = re.compile(
+    r"\b(?:love|miss|met|know|knew|told|called|texted|emailed|saw|with|"
+    r"friend|partner|named|name is)\s+"
+    r"(?P<name>[a-z][a-z'.-]+(?:\s+[a-z][a-z'.-]+){1,2})\b"
+)
 REGEX_PRIORITY_TYPES = {
     "EMAIL",
     "PHONE",
@@ -150,7 +155,36 @@ class RedactionService:
             for entity in doc.ents
             if entity.label_ in SPACY_ENTITY_TYPES
         ]
+        matches.extend(self._detect_lowercase_names(text, model))
         return self._merge_adjacent_person_entities(text, matches)
+
+    def _detect_lowercase_names(self, text: str, model: Language) -> list[_SpanMatch]:
+        """Recover names missed when users submit an entirely lowercase sentence."""
+        if not model.has_pipe("ner"):
+            return []
+
+        recovered: list[_SpanMatch] = []
+        for context_match in LOWERCASE_NAME_CONTEXT_PATTERN.finditer(text):
+            start, end = context_match.span("name")
+            normalized = text[:start] + text[start:end].title() + text[end:]
+            if normalized:
+                normalized = normalized[0].upper() + normalized[1:]
+            for entity in model(normalized).ents:
+                if (
+                    entity.label_ in SPACY_ENTITY_TYPES
+                    and entity.start_char >= start
+                    and entity.end_char <= end
+                    and entity.end_char - entity.start_char > 1
+                ):
+                    recovered.append(
+                        _SpanMatch(
+                            start=entity.start_char,
+                            end=entity.end_char,
+                            pii_type="PERSON",
+                            value=text[entity.start_char : entity.end_char],
+                        )
+                    )
+        return recovered
 
     def _detect_regex_entities(self, text: str) -> list[_SpanMatch]:
         matches: list[_SpanMatch] = []
